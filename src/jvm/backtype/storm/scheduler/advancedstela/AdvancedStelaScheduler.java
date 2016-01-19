@@ -20,8 +20,8 @@ public class AdvancedStelaScheduler implements IScheduler {
     private GlobalState globalState;
     private GlobalStatistics globalStatistics;
     private Selector selector;
-    private HashMap<String, String> targetToVictimMapping;
-    private HashMap<String, ExecutorPair> targetToNodeMapping;
+    private HashMap<String, ExecutorPair> victims;
+    private HashMap<String, ExecutorPair> targets;
 
     public void prepare(@SuppressWarnings("rawtypes") Map conf) {
         config = conf;
@@ -29,8 +29,8 @@ public class AdvancedStelaScheduler implements IScheduler {
         globalState = new GlobalState(conf);
         globalStatistics = new GlobalStatistics(conf);
         selector = new Selector();
-        targetToVictimMapping = new HashMap<String, String>();
-        targetToNodeMapping = new HashMap<String, ExecutorPair>();
+        victims = new HashMap<String, ExecutorPair>();
+        targets = new HashMap<String, ExecutorPair>();
 
 //  TODO: Code for running the observer as a separate thread.
 //        Integer observerRunDelay = (Integer) config.get(Config.STELA_SLO_OBSERVER_INTERVAL);
@@ -44,6 +44,15 @@ public class AdvancedStelaScheduler implements IScheduler {
 
     public void schedule(Topologies topologies, Cluster cluster) {
         if (cluster.needsSchedulingTopologies(topologies).size() > 0) {
+
+            if (!targets.isEmpty()) {
+                decideAssignmentForTargets(topologies, cluster);
+            }
+
+            if (!victims.isEmpty()) {
+
+            }
+
             new backtype.storm.scheduler.EvenScheduler().schedule(topologies, cluster);
         } else if (cluster.needsSchedulingTopologies(topologies).size() == 0 && topologies.getTopologies().size() > 0){
 
@@ -73,6 +82,42 @@ public class AdvancedStelaScheduler implements IScheduler {
         }
 
         runAdvancedStelaComponents(cluster, topologies);
+    }
+
+    private void decideAssignmentForTargets(Topologies topologies, Cluster cluster) {
+        List<TopologyDetails> unscheduledTopologies = cluster.needsSchedulingTopologies(topologies);
+        for (TopologyDetails topologyDetails: unscheduledTopologies) {
+            if (targets.containsKey(topologyDetails.getId())) {
+                findAssignmentForTarget(cluster, topologyDetails.getId());
+            }
+        }
+    }
+
+    private void findAssignmentForTarget(Cluster cluster, String topologyId) {
+        TopologySchedule topologySchedule = globalState.getTopologySchedules().get(topologyId);
+        ExecutorPair executorPair = targets.get(topologyId);
+        SchedulerAssignment currentTargetAssignment = cluster.getAssignmentById(topologyId);
+
+        Set<ExecutorDetails> previousExecutors = topologySchedule.getExecutorToComponent().keySet();
+
+        LOG.info("********************************************");
+        LOG.info("********************* CURRENT EXECUTORS ****************");
+        if (currentTargetAssignment != null) {
+            Set<ExecutorDetails> currentExecutors = currentTargetAssignment.getExecutors();
+            if (currentExecutors != null) {
+                for (ExecutorDetails executorDetails: currentExecutors) {
+                    LOG.info(executorDetails.toString());
+                }
+                currentExecutors.removeAll(previousExecutors);
+            }
+        }
+
+        LOG.info("********************************************");
+        LOG.info("********************* PREVIOUS EXECUTORS ****************");
+        for (ExecutorDetails executorDetails: previousExecutors) {
+            LOG.info(executorDetails.toString());
+        }
+        LOG.info("********************************************");
     }
 
     private void runAdvancedStelaComponents(Cluster cluster, Topologies topologies) {
@@ -115,8 +160,9 @@ public class AdvancedStelaScheduler implements IScheduler {
             Runtime.getRuntime().exec(targetCommand);
             Runtime.getRuntime().exec(victimCommand);
 
-            targetToVictimMapping.put(target.getId(), victim.getId());
-            targetToNodeMapping.put(target.getId(), executorSummaries);
+            targets.put(target.getId(), executorSummaries);
+            victims.put(victim.getId(), executorSummaries);
+
             sloObserver.clearTopologySLOs(target.getId());
             sloObserver.clearTopologySLOs(victim.getId());
         } catch (Exception e) {
@@ -125,13 +171,14 @@ public class AdvancedStelaScheduler implements IScheduler {
     }
 
     private void removeAlreadySelectedPairs(ArrayList<String> receivers, ArrayList<String> givers) {
-        for (String target: targetToVictimMapping.keySet()) {
+        for (String target: targets.keySet()) {
             int targetIndex = receivers.indexOf(target);
             if (targetIndex != -1) {
                 receivers.remove(targetIndex);
             }
+        }
 
-            String victim = targetToVictimMapping.get(target);
+        for (String victim: victims.keySet()) {
             int victimIndex = givers.indexOf(victim);
             if (victimIndex != -1) {
                 givers.remove(victimIndex);
@@ -139,15 +186,15 @@ public class AdvancedStelaScheduler implements IScheduler {
         }
     }
 
-    private void applyRebalancedScheduling(Cluster cluster, Topologies topologies) {
-        for (Map.Entry<String, String> targetToVictim: targetToVictimMapping.entrySet()) {
-            TopologyDetails target = topologies.getById(targetToVictim.getKey());
-            TopologyDetails victim = topologies.getById(targetToVictim.getValue());
-            ExecutorPair executorPair = targetToNodeMapping.get(targetToVictim.getKey());
-
-            reassignNewScheduling(target, victim, cluster, executorPair);
-        }
-    }
+//    private void applyRebalancedScheduling(Cluster cluster, Topologies topologies) {
+//        for (Map.Entry<String, String> targetToVictim: targetToVictimMapping.entrySet()) {
+//            TopologyDetails target = topologies.getById(targetToVictim.getKey());
+//            TopologyDetails victim = topologies.getById(targetToVictim.getValue());
+//            ExecutorPair executorPair = targetToNodeMapping.get(targetToVictim.getKey());
+//
+//            reassignNewScheduling(target, victim, cluster, executorPair);
+//        }
+//    }
 
     private void reassignNewScheduling(TopologyDetails target, TopologyDetails victim, Cluster cluster,
                                        ExecutorPair executorPair) {
