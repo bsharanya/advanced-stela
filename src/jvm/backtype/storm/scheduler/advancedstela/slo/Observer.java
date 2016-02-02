@@ -37,18 +37,13 @@ public class Observer {
         LOG.info("Running observer at: " + System.currentTimeMillis() / 1000);
 
         if (config != null) {
-            try {
-                nimbusClient = new NimbusClient(config, (String) config.get(Config.NIMBUS_HOST));
-                topologies.constructTopologyGraphs();
-                HashMap<String, Topology> allTopologies = topologies.getStelaTopologies();
+            nimbusClient = NimbusClient.getConfiguredClient(config);
+            topologies.constructTopologyGraphs();
+            HashMap<String, Topology> allTopologies = topologies.getStelaTopologies();
 
-                collectStatistics(allTopologies);
-                calculateSloPerSource(allTopologies);
-                logFinalSourceSLOsPer(allTopologies);
-
-            } catch (TTransportException e) {
-                e.printStackTrace();
-            }
+            collectStatistics(allTopologies);
+            calculateSloPerSource(allTopologies);
+            logFinalSourceSLOsPer(allTopologies);
         }
     }
 
