@@ -52,11 +52,7 @@ public class GlobalStatistics {
 
     public void collect() {
         if (config != null) {
-            try {
-                nimbusClient = new NimbusClient(config, (String) config.get(Config.NIMBUS_HOST));
-            } catch (TTransportException e) {
-                e.printStackTrace();
-            }
+            nimbusClient = NimbusClient.getConfiguredClient(config);
         }
 
         nodeStatistics.clear();

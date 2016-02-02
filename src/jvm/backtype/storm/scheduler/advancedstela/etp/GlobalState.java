@@ -1,11 +1,9 @@
 package backtype.storm.scheduler.advancedstela.etp;
 
-import backtype.storm.Config;
 import backtype.storm.generated.*;
 import backtype.storm.scheduler.*;
 import backtype.storm.utils.NimbusClient;
 import org.apache.thrift.TException;
-import org.apache.thrift.transport.TTransportException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,12 +39,7 @@ public class GlobalState {
 
     public void collect(Cluster cluster, Topologies topologies) {
         if (config != null) {
-            try {
-                nimbusClient = new NimbusClient(config, (String) config.get(Config.NIMBUS_HOST));
-            } catch (TTransportException e) {
-                e.printStackTrace();
-                return;
-            }
+            nimbusClient = NimbusClient.getConfiguredClient(config);
         }
 
         populateNodeToExecutorMapping(cluster);
